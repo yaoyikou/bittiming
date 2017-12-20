@@ -1,6 +1,6 @@
 package com.bittiming.client;
 
-import io.vertx.core.AbstractVerticle;
+import com.bittiming.utils.CacheVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
@@ -8,7 +8,7 @@ import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonObject;
 import com.bittiming.utils.Methods;
 
-public class WebSocketClientVerticle extends AbstractVerticle {
+public class WebSocketClientVerticle extends CacheVerticle {
 
 	private HttpClient client;
 
@@ -52,6 +52,8 @@ public class WebSocketClientVerticle extends AbstractVerticle {
 				}
 
 				vertx.eventBus().publish("client.test", json);
+
+				cache().put("client.test", json);
 			});
 		});
 	}
