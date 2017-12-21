@@ -14,7 +14,7 @@
     <div id="container" class="container">
         <div class="row">
             <div class="col-md-offset-8 col-md-4">
-                上次更新时间: {{ updateTime | time }}
+                <span v-class=""></span>{{ updateInfo }}
             </div>
         </div>
         <div class="row">
@@ -59,14 +59,37 @@
                 el: "#container",
                 data: {
                     "eb": null,
+                    "connected": false,
                     "bids": [],
                     "asks": [],
-                    "updateTime": null
+                    "updateTime": null,
+                    "updateInfo": '正在等待数据'
                 },
                 methods: {
 
                 },
                 created: function() {
+                    var _self = this;
+
+                    setInterval(function() {
+                        if (_self.connected) {
+                            if (_self.updateTime) {
+                                var sec = Math.round((new Date() - _self.updateTime) / 1000);
+
+                                if (sec == 0) {
+                                    _self.updateInfo = '刚刚更新';
+                                } else {
+                                    _self.updateInfo = sec + ' 秒前更新';
+                                }
+                            } else {
+                                _self.updateInfo = '正在等待数据';
+                            }
+                        } else {
+                            _self.updateInfo = '正在尝试连接';
+                        }
+
+                    },1000);
+
                     var options = {
                         "vertxbus_reconnect_attempts_max": "Infinity", // Max reconnect attempts
                         "vertxbus_reconnect_delay_min": 1000, // Initial delay (in ms) before first reconnect attempt
@@ -74,7 +97,7 @@
                         "vertxbus_reconnect_exponent": 2, // Exponential backoff factor
                         "vertxbus_randomization_factor": 0.5 // Randomization factor between 0 and 1
                     };
-                    var _self = this;
+
                     this.eb = new EventBus("/eb", options);
 
                     this.eb.enableReconnect(true);
@@ -83,15 +106,21 @@
                     };
 
                     this.eb.onopen = function () {
+                        _self.connected = true;
                         _self.eb.registerHandler('client.test', function(error, message) {
                             if (error) {
                                 console.log(error);
                             } else {
+                                console.log(message);
                                 _self.bids = message.body.tick.bids;
                                 _self.asks = message.body.tick.asks;
                                 _self.updateTime = new Date();
                             }
                         });
+                    };
+
+                    this.eb.onclose = function () {
+                        _self.connected = false;
                     };
                 }
             });

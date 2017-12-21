@@ -29,7 +29,6 @@ public class WebSocketClientVerticle extends CacheVerticle {
 			wss.writeFinalTextFrame(new JsonObject().put("sub", "market.btcusdt.depth.percent10")
 					.put("id", "depth" + System.currentTimeMillis()).toString());
 
-
 			wss.closeHandler(v -> {
 				System.out.println("disconnected");
 				vertx.setTimer(10000, l -> {
