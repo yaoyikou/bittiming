@@ -13,39 +13,39 @@
 <body>
     <div id="container" class="container">
         <div class="row">
-            <div class="col-md-offset-8 col-md-4">
-                <span v-class=""></span>{{ updateInfo }}
+            <div class="col-md-6">
+                <select v-model="subscription" v-on:change="subscribe" class="form-control">
+                    <option v-for="topic in topics" v-bind:value="topic">{{ topic }}</option>
+                </select>
             </div>
         </div>
-        <div class="row">
-            <div class="col-md-6">
-                <label><span class="glyphicon glyphicon-bitcoin"></span> 买</label>
-                <table class="table table-hover">
+        <div class="row"  v-if="data.length > 0">
+            <div class="col-md-12">
+                <table class="table">
                     <tr>
-                        <th>价格</th>
-                        <th>数量</th>
+                        <th>成交量</th>
+                        <th>成交笔数</th>
+                        <th>开盘价</th>
+                        <th>收盘价</th>
+                        <th>最低价</th>
+                        <th>最高价</th>
+                        <th>成交额</th>
+                        <th>时间</th>
                     </tr>
-                    <tr v-for="bid in bids">
-                        <td>{{ bid[0] }}</td>
-                        <td>{{ bid[1] }}</td>
+                    <tr v-for="d in data">
+                        <td>{{d.tick.amount}}</td>
+                        <td>{{d.tick.count}}</td>
+                        <td>{{d.tick.open}}</td>
+                        <td>{{d.tick.close}}</td>
+                        <td>{{d.tick.low}}</td>
+                        <td>{{d.tick.high}}</td>
+                        <td>{{d.tick.vol}}</td>
+                        <td>{{d.ts | time}}</td>
                     </tr>
                 </table>
             </div>
-            <div class="col-md-6">
-                <label><span class="glyphicon glyphicon-bitcoin"></span> 卖</label>
-                <table class="table table-hover">
-                    <tr>
-                        <th>价格</th>
-                        <th>数量</th>
-                    </tr>
-                    <tr v-for="ask in asks">
-                        <td>{{ ask[0] }}</td>
-                        <td>{{ ask[1] }}</td>
-                    </tr>
-                </table>
-            </div>
         </div>
-
+    </div>
     </div>
 
     <script src="https://cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
@@ -55,40 +55,67 @@
     <script src="https://cdn.bootcss.com/vertx/3.5.0/vertx-eventbus.min.js"></script>
     <script>
         (function () {
+
+            function dateFormat(fmt,date) { //author: meizz
+                var o = {
+                    "M+" : date.getMonth()+1,                 //月份
+                    "d+" : date.getDate(),                    //日
+                    "h+" : date.getHours(),                   //小时
+                    "m+" : date.getMinutes(),                 //分
+                    "s+" : date.getSeconds(),                 //秒
+                    "q+" : Math.floor((date.getMonth()+3)/3), //季度
+                    "S"  : date.getMilliseconds()             //毫秒
+                };
+                if(/(y+)/.test(fmt))
+                    fmt=fmt.replace(RegExp.$1, (date.getFullYear()+"").substr(4 - RegExp.$1.length));
+                for(var k in o)
+                    if(new RegExp("("+ k +")").test(fmt))
+                        fmt = fmt.replace(RegExp.$1, (RegExp.$1.length==1) ? (o[k]) : (("00"+ o[k]).substr((""+ o[k]).length)));
+                return fmt;
+            }
+
+            const DATA_COUNT = 10;
+            Vue.filter("time", function (value) {
+                return dateFormat("yyyy-MM-dd hh:mm:ss", new Date(value));
+            });
             var app = new Vue({
                 el: "#container",
                 data: {
                     "eb": null,
                     "connected": false,
-                    "bids": [],
-                    "asks": [],
-                    "updateTime": null,
-                    "updateInfo": '正在等待数据'
+                    "topics": [],
+                    "subscription": '',
+                    "lastSubscription": '',
+                    "data": []
                 },
                 methods: {
+                    subscribe: function () {
+                        if (this.connected) {
+                            if (this.lastSubscription.length > 0) {
+                                this.eb.unregisterHandler(this.lastSubscription, this.messageHandler);
+                                this.data = [];
+                            }
 
+                            this.eb.registerHandler(this.subscription, this.messageHandler);
+                            this.lastSubscription = this.subscription;
+                        }
+                    },
+
+                    messageHandler: function (error, message) {
+                        if (error) {
+                            console.log(error);
+                        } else {
+                            console.log(message);
+                            if (this.data.length >= DATA_COUNT) {
+                                this.data.pop()
+                            }
+
+                            this.data.unshift(message.body);
+                        }
+                    }
                 },
                 created: function() {
                     var _self = this;
-
-                    setInterval(function() {
-                        if (_self.connected) {
-                            if (_self.updateTime) {
-                                var sec = Math.round((new Date() - _self.updateTime) / 1000);
-
-                                if (sec == 0) {
-                                    _self.updateInfo = '刚刚更新';
-                                } else {
-                                    _self.updateInfo = sec + ' 秒前更新';
-                                }
-                            } else {
-                                _self.updateInfo = '正在等待数据';
-                            }
-                        } else {
-                            _self.updateInfo = '正在尝试连接';
-                        }
-
-                    },1000);
 
                     var options = {
                         "vertxbus_reconnect_attempts_max": "Infinity", // Max reconnect attempts
@@ -107,14 +134,13 @@
 
                     this.eb.onopen = function () {
                         _self.connected = true;
-                        _self.eb.registerHandler('client.test', function(error, message) {
-                            if (error) {
-                                console.log(error);
-                            } else {
-                                console.log(message);
-                                _self.bids = message.body.tick.bids;
-                                _self.asks = message.body.tick.asks;
-                                _self.updateTime = new Date();
+
+                        $.ajax({
+                            "url": "/topics",
+                            "dataType": "json",
+                            "success": function (data) {
+                                console.log(data);
+                                _self.topics = data;
                             }
                         });
                     };

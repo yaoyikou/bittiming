@@ -8,9 +8,14 @@ import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonObject;
 import com.bittiming.utils.Methods;
 
+import java.util.UUID;
+
 public class WebSocketClientVerticle extends CacheVerticle {
 
 	private HttpClient client;
+
+	public static final String DETAIL_TOPIC_FORMAT = "market.%s.detail";
+	public static final String[] DETAIL_SYMBOLS = {"btcusdt", "ethusdt", "ltcusdt", "etcusdt", "bccusdt", "ethbtc", "ltcbtc", "etcbtc", "bccbtc"};
 
 	@Override
 	public void start(Future<Void> startFuture) throws Exception {
@@ -26,8 +31,12 @@ public class WebSocketClientVerticle extends CacheVerticle {
 
 			System.out.println("connected");
 
-			wss.writeFinalTextFrame(new JsonObject().put("sub", "market.btcusdt.depth.percent10")
-					.put("id", "depth" + System.currentTimeMillis()).toString());
+			for (String symbol: DETAIL_SYMBOLS) {
+				String detailTopic = String.format(DETAIL_TOPIC_FORMAT, symbol);
+				wss.writeFinalTextFrame(new JsonObject().put("sub", detailTopic)
+						.put("id", UUID.randomUUID().toString().replace("-", "")).toString());
+			}
+
 
 			wss.closeHandler(v -> {
 				System.out.println("disconnected");
@@ -50,9 +59,16 @@ public class WebSocketClientVerticle extends CacheVerticle {
 					return;
 				}
 
-				vertx.eventBus().publish("client.test", json);
 
-				cache().put("client.test", json);
+				String ch = json.getString("ch");
+				System.out.println(ch);
+				if (ch != null) {
+					String key = "client." + ch;
+
+					vertx.eventBus().publish(key, json);
+
+					cache().put(key, json);
+				}
 			});
 		});
 	}
